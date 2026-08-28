@@ -11,30 +11,37 @@ async function getYouTubeVideoData() {
     videoId = urlParams.get('v');
   }
 
-  // Extract Title & Channel depending on video type
-  const meta = isShorts ? getActiveShortsMetadata() : getWatchMetadata();
-  const title = meta.title;
-  const channel = meta.channel;
-
-  let transcript = '';
-
-  try {
-    // 1. Try extracting caption track from watch page HTML (works for Shorts too using watch?v=ID)
-    transcript = await fetchTranscript(videoId);
-  } catch (e) {
-    console.log("Direct caption fetch failed, attempting DOM fallback...", e);
+  if (!videoId) {
+    return { title: 'No Video Found', transcript: '', url: window.location.href };
   }
 
-  // 2. If direct fetch didn't return text, try reading open transcript DOM
-  if (!transcript || transcript.length < 50) {
+  // 1. Fetch exact player payload and captions for this specific video ID (prevents SPA stale DOM bugs)
+  const fetchedData = await fetchTranscriptAndDetails(videoId);
+
+  // 2. Resolve Title and Channel (prefer DOM active reel or fetched payload)
+  let title = fetchedData.title;
+  let channel = fetchedData.channel;
+
+  if (!title || isShorts) {
+    const domMeta = isShorts ? getActiveShortsMetadata() : getWatchMetadata();
+    if (domMeta.title && domMeta.title !== 'YouTube Short') title = domMeta.title;
+    if (domMeta.channel && domMeta.channel !== 'Creator') channel = domMeta.channel;
+  }
+
+  title = title || fetchedData.title || document.title.replace(' - YouTube', '');
+  channel = channel || fetchedData.channel || 'YouTube Creator';
+
+  let transcript = fetchedData.transcript;
+
+  // 3. Fallback: try active DOM transcript if direct caption fetch didn't return text
+  if (!transcript || transcript.length < 30) {
     transcript = getTranscriptFromDOM();
   }
 
-  // 3. Fallback to description + chapter timestamps if no captions available
-  if (!transcript || transcript.length < 50) {
-    const descEl = document.querySelector('#description-inline-expander') || document.querySelector('#description');
-    const desc = descEl ? descEl.textContent.trim() : '';
-    transcript = `[Video Title: ${title}]\n[Channel: ${channel}]\n[Description & Outline]:\n${desc.slice(0, 4000)}`;
+  // 4. Fallback: use the video's actual description extracted from its player response
+  if (!transcript || transcript.length < 30) {
+    const desc = fetchedData.description || getActiveDescription(isShorts);
+    transcript = `[Video Title: ${title}]\n[Channel: ${channel}]\n[Description & Details]:\n${desc.slice(0, 4000)}`;
   }
 
   return {
@@ -46,8 +53,87 @@ async function getYouTubeVideoData() {
   };
 }
 
+async function fetchTranscriptAndDetails(videoId) {
+  const empty = { transcript: '', description: '', title: '', channel: '' };
+  if (!videoId) return empty;
+
+  try {
+    const targetUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    const response = await fetch(targetUrl);
+    const html = await response.text();
+
+    let title = '';
+    let channel = '';
+    let description = '';
+    let transcript = '';
+
+    // Extract ytInitialPlayerResponse JSON payload for THIS video
+    const m = html.match(/ytInitialPlayerResponse\s*=\s*({.+?});(?:var|\s*<\/script>)/) ||
+              html.match(/ytInitialPlayerResponse\s*=\s*({.+?});/);
+
+    if (m) {
+      try {
+        const playerObj = JSON.parse(m[1]);
+        const details = playerObj.videoDetails || {};
+        title = details.title || '';
+        channel = details.author || '';
+        description = details.shortDescription || '';
+
+        const tracks = playerObj.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+        if (tracks.length > 0) {
+          const enTrack = tracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US' || t.languageCode === 'en-GB') || tracks[0];
+          if (enTrack && enTrack.baseUrl) {
+            const capRes = await fetch(enTrack.baseUrl);
+            const capXml = await capRes.text();
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(capXml, 'text/xml');
+            const textNodes = xmlDoc.getElementsByTagName('text');
+
+            let textLines = [];
+            for (let i = 0; i < textNodes.length; i++) {
+              const raw = textNodes[i].textContent.trim();
+              if (raw) {
+                const decoded = raw.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+                textLines.push(decoded);
+              }
+            }
+            transcript = textLines.join(' ');
+          }
+        }
+      } catch (err) {
+        console.log("Error parsing player response:", err);
+      }
+    }
+
+    // Direct timedtext API fallback if transcript still empty
+    if (!transcript) {
+      try {
+        const ttRes = await fetch(`https://www.youtube.com/api/timedtext?lang=en&v=${videoId}`);
+        if (ttRes.ok) {
+          const ttXml = await ttRes.text();
+          if (ttXml && ttXml.includes('<text')) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(ttXml, 'text/xml');
+            const textNodes = xmlDoc.getElementsByTagName('text');
+            let textLines = [];
+            for (let i = 0; i < textNodes.length; i++) {
+              const raw = textNodes[i].textContent.trim();
+              if (raw) textLines.push(raw);
+            }
+            transcript = textLines.join(' ');
+          }
+        }
+      } catch (e) {}
+    }
+
+    return { transcript, description, title, channel };
+  } catch (err) {
+    console.error("fetchTranscriptAndDetails error:", err);
+    return empty;
+  }
+}
+
 function getActiveShortsMetadata() {
-  // Look specifically inside the active Shorts container
   const activeReel = document.querySelector('ytd-reel-video-renderer[is-active]') ||
                      document.querySelector('ytd-reel-video-renderer[overlay-state*="VISIBLE"]') ||
                      document.querySelector('ytd-reel-video-renderer');
@@ -72,71 +158,34 @@ function getActiveShortsMetadata() {
     }
   }
 
-  // Fallback: check active video overlay
-  if (!title) {
-    const overlayTitle = document.querySelector('.ytd-reel-player-overlay-renderer h2.title');
-    if (overlayTitle) title = overlayTitle.textContent.trim();
-  }
-
-  if (!title) {
-    const rawDocTitle = document.title.replace(' - YouTube', '').trim();
-    if (rawDocTitle && rawDocTitle !== 'Shorts' && rawDocTitle !== 'YouTube') {
-      title = rawDocTitle;
-    }
-  }
-
-  return { title: title || 'YouTube Short', channel: channel || 'Creator' };
+  return { title, channel };
 }
 
 function getWatchMetadata() {
   const titleEl = document.querySelector('ytd-watch-metadata #title h1 yt-formatted-string') ||
                   document.querySelector('h1.style-scope.ytd-watch-metadata') ||
                   document.querySelector('h1 yt-formatted-string');
-  const title = titleEl ? titleEl.textContent.trim() : document.title.replace(' - YouTube', '').trim();
+  const title = titleEl ? titleEl.textContent.trim() : '';
 
   const channelEl = document.querySelector('ytd-watch-metadata #owner #channel-name a') ||
                     document.querySelector('ytd-channel-name a') ||
                     document.querySelector('#owner #channel-name a');
-  const channel = channelEl ? channelEl.textContent.trim() : 'YouTube Creator';
+  const channel = channelEl ? channelEl.textContent.trim() : '';
 
-  return { title: title || 'YouTube Video', channel: channel || 'Creator' };
+  return { title, channel };
 }
 
-async function fetchTranscript(videoId) {
-  if (!videoId) return '';
-  
-  // Always query watch URL for consistent caption track parsing
-  const targetUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  const response = await fetch(targetUrl);
-  const html = await response.text();
-
-  const m = html.match(/"captionTracks":\s*(\[.*?\])/);
-  if (!m) return '';
-
-  const tracks = JSON.parse(m[1]);
-  if (!tracks || tracks.length === 0) return '';
-
-  // Prefer English track or default
-  const enTrack = tracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US') || tracks[0];
-  if (!enTrack || !enTrack.baseUrl) return '';
-
-  const capRes = await fetch(enTrack.baseUrl);
-  const capXml = await capRes.text();
-
-  const parser = new DOMParser();
-  const xmlDoc = parser.parseFromString(capXml, 'text/xml');
-  const textNodes = xmlDoc.getElementsByTagName('text');
-
-  let textLines = [];
-  for (let i = 0; i < textNodes.length; i++) {
-    const raw = textNodes[i].textContent.trim();
-    if (raw) {
-      const decoded = raw.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
-      textLines.push(decoded);
+function getActiveDescription(isShorts) {
+  if (isShorts) {
+    const activeReel = document.querySelector('ytd-reel-video-renderer[is-active]');
+    if (activeReel) {
+      const descEl = activeReel.querySelector('#description') || activeReel.querySelector('.description');
+      if (descEl) return descEl.textContent.trim();
     }
+    return '';
   }
-
-  return textLines.join(' ');
+  const descEl = document.querySelector('ytd-watch-metadata #description') || document.querySelector('#description');
+  return descEl ? descEl.textContent.trim() : '';
 }
 
 function getTranscriptFromDOM() {
