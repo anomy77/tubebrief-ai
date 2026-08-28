@@ -3,6 +3,7 @@ let currentMode = 'summary';
 let generatedText = '';
 let historyList = [];
 
+const loadingView = document.getElementById('loading-view');
 const notYtView = document.getElementById('not-yt-view');
 const settingsView = document.getElementById('settings-view');
 const historyView = document.getElementById('history-view');
@@ -51,13 +52,15 @@ async function loadHistory() {
 async function initTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab || !tab.url || (!tab.url.includes('youtube.com/watch') && !tab.url.includes('youtube.com/shorts/'))) {
+    loadingView.style.display = 'none';
     notYtView.style.display = 'flex';
     mainWorkspace.style.display = 'none';
     return;
   }
 
+  loadingView.style.display = 'flex';
   notYtView.style.display = 'none';
-  mainWorkspace.style.display = 'flex';
+  mainWorkspace.style.display = 'none';
 
   try {
     // 1. Direct MAIN World extraction from YouTube Player memory
@@ -173,6 +176,9 @@ async function initTab() {
     videoTitleEl.textContent = activeVideoData.title;
   } catch (err) {
     console.error("Error loading video data:", err);
+  } finally {
+    loadingView.style.display = 'none';
+    mainWorkspace.style.display = 'flex';
   }
 }
 

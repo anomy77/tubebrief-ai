@@ -140,6 +140,36 @@ body {
   color: var(--rs);
 }
 
+/* Loading View Spinner */
+.loading-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--t2);
+}
+
+.spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid rgba(255, 75, 75, 0.15);
+  border-top-color: var(--yt);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 12px;
+  color: var(--t2);
+  letter-spacing: 0.2px;
+}
+
 /* Warning view */
 .not-yt-view {
   flex: 1;

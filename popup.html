@@ -32,6 +32,12 @@
       </div>
     </header>
 
+    <!-- Loading State View (Shows only a single clean spinner until data is fully ready) -->
+    <div id="loading-view" class="loading-view">
+      <div class="spinner"></div>
+      <span class="loading-text">Loading video transcript...</span>
+    </div>
+
     <!-- Not on YouTube Warning View -->
     <div id="not-yt-view" class="not-yt-view" style="display:none;">
       <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -67,8 +73,8 @@
       </div>
     </div>
 
-    <!-- Main Workspace -->
-    <div id="main-workspace" class="main-workspace">
+    <!-- Main Workspace (Hidden during initial load) -->
+    <div id="main-workspace" class="main-workspace" style="display:none;">
       <!-- Video Info -->
       <div class="video-info-bar">
         <span id="video-title" class="video-title">Loading video...</span>
