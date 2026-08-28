@@ -34,7 +34,7 @@ async function loadApiKey() {
 
 async function initTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab || !tab.url || !tab.url.includes('youtube.com/watch')) {
+  if (!tab || !tab.url || (!tab.url.includes('youtube.com/watch') && !tab.url.includes('youtube.com/shorts/'))) {
     notYtView.style.display = 'flex';
     mainWorkspace.style.display = 'none';
     return;

@@ -1,11 +1,23 @@
 // TubeBrief - YouTube Video Transcript & Metadata Extractor
 
 async function getYouTubeVideoData() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const videoId = urlParams.get('v');
-  const titleEl = document.querySelector('h1.style-scope.ytd-watch-metadata') || document.querySelector('h1 yt-formatted-string');
+  let videoId = '';
+  if (window.location.pathname.startsWith('/shorts/')) {
+    videoId = window.location.pathname.split('/shorts/')[1].split('/')[0].split('?')[0];
+  } else {
+    const urlParams = new URLSearchParams(window.location.search);
+    videoId = urlParams.get('v');
+  }
+
+  const titleEl = document.querySelector('h1.style-scope.ytd-watch-metadata') || 
+                  document.querySelector('h2.title.style-scope.ytd-reel-player-header-renderer') ||
+                  document.querySelector('#shorts-container yt-formatted-string.title') ||
+                  document.querySelector('h1 yt-formatted-string');
   const title = titleEl ? titleEl.textContent.trim() : document.title.replace(' - YouTube', '');
-  const channelEl = document.querySelector('ytd-channel-name a') || document.querySelector('#owner #channel-name a');
+  
+  const channelEl = document.querySelector('ytd-channel-name a') || 
+                    document.querySelector('#owner #channel-name a') ||
+                    document.querySelector('ytd-reel-player-header-renderer #channel-name a');
   const channel = channelEl ? channelEl.textContent.trim() : 'YouTube Creator';
 
   let transcript = '';
