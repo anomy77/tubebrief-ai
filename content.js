@@ -1,30 +1,26 @@
 // TubeBrief - YouTube Video Transcript & Metadata Extractor
 
 async function getYouTubeVideoData() {
+  const isShorts = window.location.pathname.startsWith('/shorts/');
   let videoId = '';
-  if (window.location.pathname.startsWith('/shorts/')) {
+
+  if (isShorts) {
     videoId = window.location.pathname.split('/shorts/')[1].split('/')[0].split('?')[0];
   } else {
     const urlParams = new URLSearchParams(window.location.search);
     videoId = urlParams.get('v');
   }
 
-  const titleEl = document.querySelector('h1.style-scope.ytd-watch-metadata') || 
-                  document.querySelector('h2.title.style-scope.ytd-reel-player-header-renderer') ||
-                  document.querySelector('#shorts-container yt-formatted-string.title') ||
-                  document.querySelector('h1 yt-formatted-string');
-  const title = titleEl ? titleEl.textContent.trim() : document.title.replace(' - YouTube', '');
-  
-  const channelEl = document.querySelector('ytd-channel-name a') || 
-                    document.querySelector('#owner #channel-name a') ||
-                    document.querySelector('ytd-reel-player-header-renderer #channel-name a');
-  const channel = channelEl ? channelEl.textContent.trim() : 'YouTube Creator';
+  // Extract Title & Channel depending on video type
+  const meta = isShorts ? getActiveShortsMetadata() : getWatchMetadata();
+  const title = meta.title;
+  const channel = meta.channel;
 
   let transcript = '';
 
   try {
-    // 1. Try extracting caption track from page source
-    transcript = await fetchTranscriptFromPageSource();
+    // 1. Try extracting caption track from watch page HTML (works for Shorts too using watch?v=ID)
+    transcript = await fetchTranscript(videoId);
   } catch (e) {
     console.log("Direct caption fetch failed, attempting DOM fallback...", e);
   }
@@ -46,13 +42,72 @@ async function getYouTubeVideoData() {
     title,
     channel,
     url: window.location.href,
-    transcript: transcript.slice(0, 25000) // Keep within token budget
+    transcript: transcript.slice(0, 25000)
   };
 }
 
-async function fetchTranscriptFromPageSource() {
-  // Fetch current page HTML to get caption tracks from ytInitialPlayerResponse
-  const response = await fetch(window.location.href);
+function getActiveShortsMetadata() {
+  // Look specifically inside the active Shorts container
+  const activeReel = document.querySelector('ytd-reel-video-renderer[is-active]') ||
+                     document.querySelector('ytd-reel-video-renderer[overlay-state*="VISIBLE"]') ||
+                     document.querySelector('ytd-reel-video-renderer');
+
+  let title = '';
+  let channel = '';
+
+  if (activeReel) {
+    const titleEl = activeReel.querySelector('h2.title') || 
+                    activeReel.querySelector('yt-formatted-string.title') ||
+                    activeReel.querySelector('.yt-reel-metadatastyle-renderer__title') ||
+                    activeReel.querySelector('#headline yt-formatted-string');
+    if (titleEl && titleEl.textContent.trim()) {
+      title = titleEl.textContent.trim();
+    }
+
+    const channelEl = activeReel.querySelector('#channel-name a') ||
+                      activeReel.querySelector('ytd-channel-name a') ||
+                      activeReel.querySelector('.ytd-channel-name');
+    if (channelEl && channelEl.textContent.trim()) {
+      channel = channelEl.textContent.trim();
+    }
+  }
+
+  // Fallback: check active video overlay
+  if (!title) {
+    const overlayTitle = document.querySelector('.ytd-reel-player-overlay-renderer h2.title');
+    if (overlayTitle) title = overlayTitle.textContent.trim();
+  }
+
+  if (!title) {
+    const rawDocTitle = document.title.replace(' - YouTube', '').trim();
+    if (rawDocTitle && rawDocTitle !== 'Shorts' && rawDocTitle !== 'YouTube') {
+      title = rawDocTitle;
+    }
+  }
+
+  return { title: title || 'YouTube Short', channel: channel || 'Creator' };
+}
+
+function getWatchMetadata() {
+  const titleEl = document.querySelector('ytd-watch-metadata #title h1 yt-formatted-string') ||
+                  document.querySelector('h1.style-scope.ytd-watch-metadata') ||
+                  document.querySelector('h1 yt-formatted-string');
+  const title = titleEl ? titleEl.textContent.trim() : document.title.replace(' - YouTube', '').trim();
+
+  const channelEl = document.querySelector('ytd-watch-metadata #owner #channel-name a') ||
+                    document.querySelector('ytd-channel-name a') ||
+                    document.querySelector('#owner #channel-name a');
+  const channel = channelEl ? channelEl.textContent.trim() : 'YouTube Creator';
+
+  return { title: title || 'YouTube Video', channel: channel || 'Creator' };
+}
+
+async function fetchTranscript(videoId) {
+  if (!videoId) return '';
+  
+  // Always query watch URL for consistent caption track parsing
+  const targetUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  const response = await fetch(targetUrl);
   const html = await response.text();
 
   const m = html.match(/"captionTracks":\s*(\[.*?\])/);
@@ -65,11 +120,9 @@ async function fetchTranscriptFromPageSource() {
   const enTrack = tracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US') || tracks[0];
   if (!enTrack || !enTrack.baseUrl) return '';
 
-  // Fetch XML caption text
   const capRes = await fetch(enTrack.baseUrl);
   const capXml = await capRes.text();
 
-  // Parse XML text tags
   const parser = new DOMParser();
   const xmlDoc = parser.parseFromString(capXml, 'text/xml');
   const textNodes = xmlDoc.getElementsByTagName('text');
@@ -78,7 +131,6 @@ async function fetchTranscriptFromPageSource() {
   for (let i = 0; i < textNodes.length; i++) {
     const raw = textNodes[i].textContent.trim();
     if (raw) {
-      // Decode HTML entities
       const decoded = raw.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
       textLines.push(decoded);
     }
