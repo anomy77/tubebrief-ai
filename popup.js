@@ -183,6 +183,28 @@ function setupEventListeners() {
     generateBtnText.textContent = 'Generate AI Brief';
   });
 
+  // Copy Transcript & Output Handlers
+  const btnCopyTranscript = document.getElementById('btn-copy-transcript');
+  btnCopyTranscript.addEventListener('click', () => {
+    if (!activeVideoData || !activeVideoData.transcript) {
+      alert('No transcript available for this video.');
+      return;
+    }
+
+    navigator.clipboard.writeText(activeVideoData.transcript);
+    
+    // Also display in output box if empty
+    if (!generatedText) {
+      outputBox.textContent = activeVideoData.transcript;
+    }
+
+    const orig = btnCopyTranscript.innerHTML;
+    btnCopyTranscript.innerHTML = '<span>✓ Copied!</span>';
+    setTimeout(() => {
+      btnCopyTranscript.innerHTML = orig;
+    }, 1400);
+  });
+
   // Copy & Download
   btnCopyOutput.addEventListener('click', () => {
     if (!generatedText) return;
