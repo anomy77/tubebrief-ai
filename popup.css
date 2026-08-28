@@ -20,8 +20,8 @@
 }
 
 body {
-  width: 460px;
-  height: 580px;
+  width: 470px;
+  height: 590px;
   background: var(--bg);
   color: var(--t1);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -203,7 +203,7 @@ body {
 
 .mode-tab {
   flex: 1;
-  padding: 5px 8px;
+  padding: 5px 6px;
   background: transparent;
   border: none;
   border-radius: 4px;
@@ -212,6 +212,7 @@ body {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
+  text-align: center;
 }
 
 .mode-tab:hover {
@@ -222,6 +223,28 @@ body {
   background: var(--s2);
   color: var(--yt);
   font-weight: 600;
+}
+
+/* Custom Prompt Box */
+.custom-prompt-container {
+  padding: 8px 14px 0;
+}
+
+.custom-prompt-container textarea {
+  width: 100%;
+  background: var(--s1);
+  border: 1px solid var(--bd);
+  color: var(--t1);
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+}
+
+.custom-prompt-container textarea:focus {
+  border-color: var(--yt);
 }
 
 /* Generate Button */
@@ -242,7 +265,7 @@ body {
   background: var(--yt-hover);
 }
 
-/* Output Box */
+/* Output Box & Markdown Styles */
 .output-container {
   flex: 1;
   padding: 0 14px 8px;
@@ -256,20 +279,79 @@ body {
   background: var(--s1);
   border: 1px solid var(--bd);
   border-radius: 6px;
-  padding: 10px 12px;
-  font-family: 'Consolas', 'SF Mono', monospace;
-  font-size: 11.5px;
+  padding: 12px 14px;
+  font-size: 12px;
   color: var(--t1);
   overflow-y: auto;
-  white-space: pre-wrap;
   user-select: text;
-  line-height: 1.5;
+  line-height: 1.6;
   resize: vertical;
 }
 
 .output-box:empty:before {
   content: attr(placeholder);
   color: var(--t3);
+}
+
+/* Markdown Elements within Output */
+.output-box h1,
+.output-box h2,
+.output-box h3,
+.output-box h4 {
+  color: #fff;
+  margin: 10px 0 6px 0;
+  font-weight: 600;
+}
+
+.output-box h1 { font-size: 15px; border-bottom: 1px solid var(--bd); padding-bottom: 4px; }
+.output-box h2 { font-size: 13.5px; }
+.output-box h3 { font-size: 12.5px; }
+
+.output-box p {
+  margin-bottom: 8px;
+  color: var(--t1);
+}
+
+.output-box ul,
+.output-box ol {
+  margin: 6px 0 8px 18px;
+  padding: 0;
+}
+
+.output-box li {
+  margin-bottom: 4px;
+}
+
+.output-box strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+.output-box em {
+  color: #d8d8d8;
+}
+
+.output-box code {
+  background: var(--s3);
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+}
+
+.output-box pre {
+  background: var(--s3);
+  padding: 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.output-box blockquote {
+  border-left: 3px solid var(--yt);
+  padding-left: 10px;
+  color: var(--t2);
+  margin: 8px 0;
 }
 
 /* Actions Bar */

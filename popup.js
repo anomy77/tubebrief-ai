@@ -13,6 +13,9 @@ const btnSaveKey = document.getElementById('btn-save-key');
 const btnCloseSettings = document.getElementById('btn-close-settings');
 
 const modeTabs = document.querySelectorAll('.mode-tab');
+const customPromptContainer = document.getElementById('custom-prompt-container');
+const customPromptInput = document.getElementById('custom-prompt-input');
+
 const btnGenerate = document.getElementById('btn-generate');
 const generateBtnText = document.getElementById('generate-btn-text');
 const outputBox = document.getElementById('output-box');
@@ -84,6 +87,13 @@ function setupEventListeners() {
       modeTabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       currentMode = tab.getAttribute('data-mode');
+
+      if (currentMode === 'custom') {
+        customPromptContainer.style.display = 'block';
+        customPromptInput.focus();
+      } else {
+        customPromptContainer.style.display = 'none';
+      }
     });
   });
 
@@ -106,17 +116,20 @@ function setupEventListeners() {
 
     btnGenerate.disabled = true;
     generateBtnText.textContent = 'Analyzing Video with Gemini...';
-    outputBox.textContent = 'Generating brief...';
+    outputBox.innerHTML = '<span style="color:var(--t2)">Generating brief...</span>';
 
     try {
       const prompt = buildPrompt(currentMode, activeVideoData);
       const text = await callGeminiAPI(apiKey, prompt);
       generatedText = text;
-      outputBox.textContent = text;
+      
+      // Render clean Markdown HTML inside viewer
+      outputBox.innerHTML = renderMarkdownToHtml(text);
+
       btnCopyOutput.disabled = false;
       btnDlOutput.disabled = false;
     } catch (err) {
-      outputBox.textContent = `Error: ${err.message || 'Failed to generate brief. Check your API key.'}`;
+      outputBox.innerHTML = `<span style="color:var(--yt)">Error: ${escapeHtml(err.message || 'Failed to generate brief. Check your API key.')}</span>`;
     }
 
     btnGenerate.disabled = false;
@@ -142,26 +155,37 @@ function setupEventListeners() {
 }
 
 function buildPrompt(mode, data) {
-  const baseContext = `Video Title: "${data.title}"\nChannel: ${data.channel}\nURL: ${data.url}\n\nTranscript Content:\n${data.transcript}\n\n`;
+  const strictRule = `CRITICAL INSTRUCTION: Output ONLY the requested content directly in clean Markdown. Do NOT include ANY conversational filler, intro, or outro text (e.g. do NOT say "Here is a...", "Sure!", "Based on the video..."). Start IMMEDIATELY with the first line of content.\n\n`;
+  const baseContext = `${strictRule}Video Title: "${data.title}"\nChannel: ${data.channel}\nURL: ${data.url}\n\nTranscript Content:\n${data.transcript}\n\n`;
 
   switch (mode) {
     case 'summary':
-      return `${baseContext}You are an expert analyst. Provide a clear Markdown summary of this video:
-1. **Core Thesis / Executive Summary** (2-3 punchy sentences).
-2. **5 Key Actionable Takeaways** (bullet points with bold headers).
-3. **Standout Quote or Insight**.`;
+      return `${baseContext}Provide a clear executive summary of this video:
+### Core Thesis
+(2-3 punchy sentences)
+
+### 5 Key Actionable Takeaways
+(Bullet points with bold headers)
+
+### Standout Quote or Insight
+(Exact quote or key takeaway)`;
 
     case 'notes':
-      return `${baseContext}You are an academic researcher. Convert this video into comprehensive, structured Markdown study notes with clear headings, bullet points, and key concepts explained simply.`;
+      return `${baseContext}Convert this video into comprehensive, structured study notes with clear Markdown headings, bullet points, and key concepts explained simply.`;
 
     case 'twitter':
-      return `${baseContext}You are a viral tech/business Twitter writer. Write an engaging 5-tweet thread summarizing the highest-value insights from this video:
+      return `${baseContext}Write an engaging 5-tweet thread summarizing the highest-value insights from this video:
 - Tweet 1: Hook that makes people want to read.
 - Tweets 2-4: Key insights (1 per tweet).
-- Tweet 5: Conclusion + CTA linking back to the video. Format as 1/5, 2/5, etc.`;
+- Tweet 5: Conclusion + CTA linking back to the video. Format strictly as 1/ 2/ 3/ 4/ 5/.`;
 
     case 'linkedin':
-      return `${baseContext}You are a thought leader. Write a high-engagement, professional LinkedIn post based on this video's key insights. Use punchy 1-2 sentence paragraphs, clean whitespace, and 3 relevant hashtags at the bottom.`;
+      return `${baseContext}Write a high-engagement, professional LinkedIn post based on this video's key insights. Use punchy 1-2 sentence paragraphs, clean whitespace, and 3 relevant hashtags at the bottom. Start directly with the hook.`;
+
+    case 'custom': {
+      const customInstruction = customPromptInput.value.trim() || 'Summarize this video in clear Markdown.';
+      return `${baseContext}Instruction: ${customInstruction}`;
+    }
 
     default:
       return `${baseContext}Summarize this video in clear Markdown.`;
@@ -229,6 +253,45 @@ async function callGeminiAPI(apiKey, prompt) {
   return text.trim();
 }
 
+function renderMarkdownToHtml(md) {
+  if (!md) return '';
+  
+  // Escape raw HTML tags first
+  let html = escapeHtml(md);
+
+  // Headers
+  html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+  html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+  html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+
+  // Bold and Italics
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+  // Inline Code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Blockquotes
+  html = html.replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>');
+
+  // Bullet Lists
+  html = html.replace(/^\s*[\-\*]\s+(.*$)/gim, '<li>$1</li>');
+  html = html.replace(/(<li>[\s\S]*?<\/li>)/gi, '<ul>$1</ul>');
+  // Fix nested ul duplication
+  html = html.replace(/<\/ul>\s*<ul>/gi, '');
+
+  // Paragraphs / Newlines
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+  html = `<p>${html}</p>`;
+
+  // Clean empty paragraphs around tags
+  html = html.replace(/<p><(h1|h2|h3|ul|ol|blockquote)/gi, '<$1');
+  html = html.replace(/<\/(h1|h2|h3|ul|ol|blockquote)><\/p>/gi, '</$1>');
+
+  return html;
+}
+
 function downloadFile(filename, content) {
   const blob = new Blob([content], { type: 'text/markdown;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -239,4 +302,13 @@ function downloadFile(filename, content) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+function escapeHtml(s) {
+  return (s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

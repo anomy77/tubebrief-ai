@@ -31,7 +31,7 @@
         <line x1="12" y1="8" x2="12" y2="12"></line>
         <line x1="12" y1="16" x2="12.01" y2="16"></line>
       </svg>
-      <p>Please open any YouTube video watch page to generate an AI summary or thread.</p>
+      <p>Please open any YouTube video or Short to generate an AI brief.</p>
     </div>
 
     <!-- API Key Settings View -->
@@ -58,6 +58,12 @@
         <button class="mode-tab" data-mode="notes">Notes</button>
         <button class="mode-tab" data-mode="twitter">X Thread</button>
         <button class="mode-tab" data-mode="linkedin">LinkedIn</button>
+        <button class="mode-tab" data-mode="custom">Custom</button>
+      </div>
+
+      <!-- Custom Prompt Box (Active on Custom Mode) -->
+      <div id="custom-prompt-container" class="custom-prompt-container" style="display:none;">
+        <textarea id="custom-prompt-input" rows="2" placeholder="Enter custom prompt (e.g. 'Extract all tools mentioned', 'Explain like I am 5', 'Translate to Spanish')..."></textarea>
       </div>
 
       <!-- Action Button -->
@@ -70,7 +76,7 @@
         </button>
       </div>
 
-      <!-- Output Container -->
+      <!-- Output Container (Markdown rendered) -->
       <div class="output-container">
         <div id="output-box" class="output-box" placeholder="Click 'Generate AI Brief' to analyze this video..."></div>
       </div>
@@ -97,7 +103,7 @@
 
     <!-- Footer -->
     <footer class="footer">
-      <span>TubeBrief AI · Free Gemini 2.0 Flash</span>
+      <span>TubeBrief AI</span>
     </footer>
   </div>
 
