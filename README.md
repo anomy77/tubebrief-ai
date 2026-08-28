@@ -2,6 +2,8 @@
 
 A Manifest V3 Chrome extension that turns any YouTube video or YouTube Short into concise executive summaries, structured study notes, or ready-to-post Twitter and LinkedIn threads using Google's Gemini 2.0 Flash / Flash Lite API.
 
+![TubeBrief Demo](./demo.gif)
+
 ## Features
 
 - Multi-Mode Generation:
