@@ -1,6 +1,6 @@
 # TubeBrief - YouTube AI Summary & Post Generator
 
-A Manifest V3 Chrome extension that turns any YouTube video into concise executive summaries, structured study notes, or ready-to-post Twitter and LinkedIn threads using the Google Gemini Flash API.
+A Manifest V3 Chrome extension that turns any YouTube video or YouTube Short into concise executive summaries, structured study notes, or ready-to-post Twitter and LinkedIn threads using Google's Gemini 2.0 Flash / Flash Lite API.
 
 ## Features
 
@@ -9,7 +9,8 @@ A Manifest V3 Chrome extension that turns any YouTube video into concise executi
   - Study Notes: Comprehensive structured notes with key concepts explained.
   - X (Twitter) Thread: 5-part viral thread with hook and formatting.
   - LinkedIn Post: Professional post formatted for high engagement.
-- Fast & Free AI: Connects to Google Gemini 1.5 Flash via your own free API key.
+- Full YouTube Shorts Support: Automatically extracts transcripts, titles, and channels from both standard YouTube videos and YouTube Shorts.
+- Fast & Free AI: Connects to Google Gemini 2.0 Flash and Gemini 2.0 Flash Lite with automatic multi-model fallback.
 - Direct Caption Extraction: Automatically reads YouTube caption tracks from the video player without third-party proxy servers.
 - Resizable Output Box: Drag the bottom-right handle to expand long notes comfortably.
 - One-Click Export: Copy formatted text directly to clipboard or download as a `.md` Markdown file.
@@ -24,13 +25,13 @@ A Manifest V3 Chrome extension that turns any YouTube video into concise executi
 ## Setup
 
 1. Get a free Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey).
-2. Open any YouTube video.
+2. Open any YouTube video or Short.
 3. Click the TubeBrief icon in your browser toolbar.
 4. Click the gear icon in the top right, paste your key, and click **Save Key**.
 
 ## Customizing the AI Provider (OpenAI, Claude, Mistral, Groq)
 
-By default, TubeBrief uses Google Gemini 1.5 Flash because it is free with generous rate limits. If you prefer to use OpenAI, Mistral, Claude, or Groq, you can modify the `callGeminiAPI` function in `popup.js`.
+By default, TubeBrief uses Google Gemini 2.0 Flash / Flash Lite because it is fast, intelligent, and free with generous rate limits. If you prefer to use OpenAI, Mistral, Claude, or Groq, you can modify the `callGeminiAPI` function in `popup.js`.
 
 ### 1. OpenAI (GPT-4o-mini / GPT-4o)
 
