@@ -168,48 +168,65 @@ function buildPrompt(mode, data) {
   }
 }
 
-async function callGeminiAPI(apiKey, prompt) {
-  const candidateModels = [
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-lite',
-    'gemini-1.5-flash-latest',
-    'gemini-1.5-flash-8b',
-    'gemini-1.5-flash'
-  ];
+async function getBestGeminiModel(apiKey) {
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (res.ok) {
+      const data = await res.json();
+      const models = data.models || [];
+      const contentModels = models.filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'));
+      
+      const preferred = contentModels.find(m => m.name.includes('gemini-2.0-flash')) ||
+                        contentModels.find(m => m.name.includes('gemini-2.5-flash')) ||
+                        contentModels.find(m => m.name.includes('gemini-1.5-flash-latest')) ||
+                        contentModels.find(m => m.name.includes('gemini-1.5-flash')) ||
+                        contentModels.find(m => m.name.includes('flash')) ||
+                        contentModels.find(m => m.name.includes('gemini-pro')) ||
+                        contentModels[0];
 
-  let lastError = null;
-
-  for (const model of candidateModels) {
-    try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: prompt }]
-          }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2000
-          }
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) return text.trim();
-      } else {
-        const errorData = await response.json();
-        lastError = errorData.error ? errorData.error.message : `Model ${model} failed`;
+      if (preferred) {
+        return preferred.name.replace('models/', '');
       }
-    } catch (e) {
-      lastError = e.message;
+    } else {
+      const err = await res.json();
+      throw new Error(err.error ? err.error.message : 'Invalid API Key');
     }
+  } catch (e) {
+    if (e.message.includes('API Key') || e.message.includes('API_KEY_INVALID')) {
+      throw e;
+    }
+    console.log("Model discovery fallback:", e);
+  }
+  return 'gemini-1.5-flash-latest';
+}
+
+async function callGeminiAPI(apiKey, prompt) {
+  const modelName = await getBestGeminiModel(apiKey);
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{ text: prompt }]
+      }],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 2048
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error ? errorData.error.message : `API request failed with status ${response.status}`);
   }
 
-  throw new Error(lastError || 'Failed to generate brief with available Gemini models.');
+  const data = await response.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('No content returned from Gemini.');
+  return text.trim();
 }
 
 function downloadFile(filename, content) {
