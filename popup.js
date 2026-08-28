@@ -60,16 +60,117 @@ async function initTab() {
   mainWorkspace.style.display = 'flex';
 
   try {
-    await chrome.scripting.executeScript({
+    // 1. Direct MAIN World extraction from YouTube Player memory
+    const [execResult] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ['content.js']
+      world: 'MAIN',
+      func: () => {
+        let player = document.getElementById('movie_player');
+        let playerResponse = null;
+
+        if (player && typeof player.getPlayerResponse === 'function') {
+          playerResponse = player.getPlayerResponse();
+        }
+        if (!playerResponse && window.ytInitialPlayerResponse) {
+          playerResponse = window.ytInitialPlayerResponse;
+        }
+
+        const isShorts = window.location.pathname.startsWith('/shorts/');
+        let title = '';
+        let channel = '';
+
+        if (isShorts) {
+          const activeReel = document.querySelector('ytd-reel-video-renderer[is-active]') || document.querySelector('ytd-reel-video-renderer');
+          if (activeReel) {
+            const tEl = activeReel.querySelector('h2.title') || activeReel.querySelector('yt-formatted-string.title');
+            if (tEl) title = tEl.textContent.trim();
+            const cEl = activeReel.querySelector('#channel-name a') || activeReel.querySelector('ytd-channel-name a');
+            if (cEl) channel = cEl.textContent.trim();
+          }
+        }
+
+        const details = playerResponse?.videoDetails || {};
+        title = title || details.title || document.title.replace(' - YouTube', '').trim();
+        channel = channel || details.author || 'YouTube Creator';
+        const description = details.shortDescription || '';
+        const tracks = playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+
+        return {
+          title,
+          channel,
+          description,
+          captionTracks: tracks,
+          url: window.location.href
+        };
+      }
     });
 
-    const data = await chrome.tabs.sendMessage(tab.id, { action: 'get_video_data' });
-    if (data) {
-      activeVideoData = data;
-      videoTitleEl.textContent = data.title || 'YouTube Video';
+    const playerMeta = execResult?.result || {};
+    let transcript = '';
+
+    // 2. Fetch and parse the live caption track
+    if (playerMeta.captionTracks && playerMeta.captionTracks.length > 0) {
+      const tracks = playerMeta.captionTracks;
+      const enTrack = tracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US' || t.languageCode === 'en-GB') || tracks[0];
+      
+      if (enTrack && enTrack.baseUrl) {
+        try {
+          const capRes = await fetch(enTrack.baseUrl);
+          const capText = await capRes.text();
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(capText, 'text/xml');
+          const textNodes = xmlDoc.getElementsByTagName('text');
+
+          let textLines = [];
+          for (let i = 0; i < textNodes.length; i++) {
+            const raw = textNodes[i].textContent.trim();
+            if (raw) {
+              const decoded = raw
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&#39;/g, "'")
+                .replace(/&quot;/g, '"')
+                .replace(/\n/g, ' ');
+              textLines.push(decoded);
+            }
+          }
+          if (textLines.length > 0) {
+            transcript = textLines.join(' ');
+          }
+        } catch (e) {
+          console.error("Caption track fetch error:", e);
+        }
+      }
     }
+
+    // 3. Fallback to content script if MAIN world had no captions
+    if (!transcript) {
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content.js']
+        });
+        const csData = await chrome.tabs.sendMessage(tab.id, { action: 'get_video_data' });
+        if (csData && csData.transcript) {
+          transcript = csData.transcript;
+        }
+      } catch (err) {}
+    }
+
+    // 4. Final Fallback if video is genuinely 100% silent / instrumental
+    if (!transcript) {
+      transcript = `[Video Title: ${playerMeta.title}]\n[Channel: ${playerMeta.channel}]\n[Note: No spoken audio captions found. Video description below]:\n\n${(playerMeta.description || '').slice(0, 4000)}`;
+    }
+
+    activeVideoData = {
+      title: playerMeta.title || 'YouTube Video',
+      channel: playerMeta.channel || 'Creator',
+      url: playerMeta.url || tab.url,
+      transcript: transcript.slice(0, 30000)
+    };
+
+    videoTitleEl.textContent = activeVideoData.title;
   } catch (err) {
     console.error("Error loading video data:", err);
   }
