@@ -230,6 +230,15 @@ function setupEventListeners() {
       modeTabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       currentMode = tab.getAttribute('data-mode');
+      const modeButtonLabels = {
+        summary: 'Generate Summary',
+        notes: 'Generate Study Notes',
+        twitter: 'Generate X Thread',
+        linkedin: 'Generate LinkedIn Post',
+        custom: 'Execute Custom Prompt'
+      };
+
+      generateBtnText.textContent = modeButtonLabels[currentMode] || 'Generate AI Brief';
 
       if (currentMode === 'custom') {
         customPromptContainer.style.display = 'block';
@@ -256,6 +265,14 @@ function setupEventListeners() {
       alert('No video data or transcript found on this page.');
       return;
     }
+
+    const modeButtonLabels = {
+      summary: 'Generate Summary',
+      notes: 'Generate Study Notes',
+      twitter: 'Generate X Thread',
+      linkedin: 'Generate LinkedIn Post',
+      custom: 'Execute Custom Prompt'
+    };
 
     btnGenerate.disabled = true;
     generateBtnText.textContent = 'Analyzing Video with Gemini...';
@@ -287,7 +304,7 @@ function setupEventListeners() {
     }
 
     btnGenerate.disabled = false;
-    generateBtnText.textContent = 'Generate AI Brief';
+    generateBtnText.textContent = modeButtonLabels[currentMode] || 'Generate AI Brief';
   });
 
   // Copy Transcript & Output Handlers
