@@ -1,13 +1,20 @@
 let activeVideoData = null;
 let currentMode = 'summary';
 let generatedText = '';
+let historyList = [];
 
 const notYtView = document.getElementById('not-yt-view');
 const settingsView = document.getElementById('settings-view');
+const historyView = document.getElementById('history-view');
 const mainWorkspace = document.getElementById('main-workspace');
 
 const videoTitleEl = document.getElementById('video-title');
 const btnSettings = document.getElementById('btn-settings');
+const btnHistory = document.getElementById('btn-history');
+const btnCloseHistory = document.getElementById('btn-close-history');
+const btnClearHistory = document.getElementById('btn-clear-history');
+const historyListContainer = document.getElementById('history-list');
+
 const apiKeyInput = document.getElementById('api-key-input');
 const btnSaveKey = document.getElementById('btn-save-key');
 const btnCloseSettings = document.getElementById('btn-close-settings');
@@ -24,6 +31,7 @@ const btnDlOutput = document.getElementById('btn-dl-output');
 
 document.addEventListener('DOMContentLoaded', async () => {
   await loadApiKey();
+  await loadHistory();
   await initTab();
   setupEventListeners();
 });
@@ -33,6 +41,11 @@ async function loadApiKey() {
   if (result.gemini_api_key) {
     apiKeyInput.value = result.gemini_api_key;
   }
+}
+
+async function loadHistory() {
+  const result = await chrome.storage.local.get(['brief_history']);
+  historyList = result.brief_history || [];
 }
 
 async function initTab() {
@@ -65,6 +78,7 @@ async function initTab() {
 function setupEventListeners() {
   // Settings toggle
   btnSettings.addEventListener('click', () => {
+    historyView.style.display = 'none';
     settingsView.style.display = settingsView.style.display === 'none' ? 'flex' : 'none';
     mainWorkspace.style.display = settingsView.style.display === 'flex' ? 'none' : 'flex';
   });
@@ -79,6 +93,28 @@ function setupEventListeners() {
   btnCloseSettings.addEventListener('click', () => {
     settingsView.style.display = 'none';
     mainWorkspace.style.display = 'flex';
+  });
+
+  // History toggle
+  btnHistory.addEventListener('click', () => {
+    settingsView.style.display = 'none';
+    const isOpening = historyView.style.display === 'none';
+    historyView.style.display = isOpening ? 'flex' : 'none';
+    mainWorkspace.style.display = isOpening ? 'none' : 'flex';
+    if (isOpening) {
+      renderHistory();
+    }
+  });
+
+  btnCloseHistory.addEventListener('click', () => {
+    historyView.style.display = 'none';
+    mainWorkspace.style.display = 'flex';
+  });
+
+  btnClearHistory.addEventListener('click', async () => {
+    historyList = [];
+    await chrome.storage.local.set({ brief_history: [] });
+    renderHistory();
   });
 
   // Mode Tabs
@@ -128,6 +164,17 @@ function setupEventListeners() {
 
       btnCopyOutput.disabled = false;
       btnDlOutput.disabled = false;
+
+      // Save to History
+      await saveToHistory({
+        id: 'brief-' + Date.now(),
+        videoTitle: activeVideoData.title || 'YouTube Video',
+        videoUrl: activeVideoData.url || '',
+        mode: currentMode,
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        content: text
+      });
     } catch (err) {
       outputBox.innerHTML = `<span style="color:var(--yt)">Error: ${escapeHtml(err.message || 'Failed to generate brief. Check your API key.')}</span>`;
     }
@@ -151,6 +198,63 @@ function setupEventListeners() {
     if (!generatedText) return;
     const title = (activeVideoData ? activeVideoData.title : 'video').replace(/[/\\?%*:|"<>]/g, '-').slice(0, 40);
     downloadFile(`${title}-${currentMode}.md`, generatedText);
+  });
+}
+
+async function saveToHistory(item) {
+  historyList.unshift(item);
+  if (historyList.length > 50) historyList.pop(); // Cap history to 50 items
+  await chrome.storage.local.set({ brief_history: historyList });
+}
+
+function renderHistory() {
+  historyListContainer.innerHTML = '';
+
+  if (historyList.length === 0) {
+    historyListContainer.innerHTML = `<div class="history-empty"><p>No saved briefs yet.</p></div>`;
+    return;
+  }
+
+  historyList.forEach(item => {
+    const el = document.createElement('div');
+    el.className = 'history-item';
+
+    el.innerHTML = `
+      <div class="history-item-top">
+        <span class="history-mode-tag">${escapeHtml(item.mode)}</span>
+        <span class="history-date">${escapeHtml(item.date)} · ${escapeHtml(item.time)}</span>
+      </div>
+      <div class="history-item-title">${escapeHtml(item.videoTitle)}</div>
+      <div class="history-item-snippet">${escapeHtml(item.content)}</div>
+      <div class="history-item-actions">
+        <button class="history-btn load-btn" title="Load into viewer">Load</button>
+        <button class="history-btn copy-btn" title="Copy text">Copy</button>
+        <button class="history-btn del del-btn" title="Delete">Delete</button>
+      </div>
+    `;
+
+    el.querySelector('.load-btn').addEventListener('click', () => {
+      generatedText = item.content;
+      outputBox.innerHTML = renderMarkdownToHtml(item.content);
+      btnCopyOutput.disabled = false;
+      btnDlOutput.disabled = false;
+      historyView.style.display = 'none';
+      mainWorkspace.style.display = 'flex';
+    });
+
+    el.querySelector('.copy-btn').addEventListener('click', (e) => {
+      navigator.clipboard.writeText(item.content);
+      e.target.textContent = '✓ Copied';
+      setTimeout(() => { e.target.textContent = 'Copy'; }, 1200);
+    });
+
+    el.querySelector('.del-btn').addEventListener('click', async () => {
+      historyList = historyList.filter(h => h.id !== item.id);
+      await chrome.storage.local.set({ brief_history: historyList });
+      renderHistory();
+    });
+
+    historyListContainer.appendChild(el);
   });
 }
 
@@ -256,7 +360,6 @@ async function callGeminiAPI(apiKey, prompt) {
 function renderMarkdownToHtml(md) {
   if (!md) return '';
   
-  // Escape raw HTML tags first
   let html = escapeHtml(md);
 
   // Headers
@@ -277,7 +380,6 @@ function renderMarkdownToHtml(md) {
   // Bullet Lists
   html = html.replace(/^\s*[\-\*]\s+(.*$)/gim, '<li>$1</li>');
   html = html.replace(/(<li>[\s\S]*?<\/li>)/gi, '<ul>$1</ul>');
-  // Fix nested ul duplication
   html = html.replace(/<\/ul>\s*<ul>/gi, '');
 
   // Paragraphs / Newlines

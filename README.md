@@ -9,6 +9,8 @@ A Manifest V3 Chrome extension that turns any YouTube video or YouTube Short int
   - Study Notes: Comprehensive structured notes with key concepts explained.
   - X (Twitter) Thread: 5-part viral thread with hook and formatting.
   - LinkedIn Post: Professional post formatted for high engagement.
+  - Custom Mode: Enter your own custom prompt or instructions.
+- Saved Briefs History: Clock icon in the header lets you browse, reload, copy, and manage past generated briefs.
 - Full YouTube Shorts Support: Automatically extracts transcripts, titles, and channels from both standard YouTube videos and YouTube Shorts.
 - Fast & Free AI: Connects to Google Gemini 2.0 Flash and Gemini 2.0 Flash Lite with automatic multi-model fallback.
 - Direct Caption Extraction: Automatically reads YouTube caption tracks from the video player without third-party proxy servers.
