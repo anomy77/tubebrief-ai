@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TubeBrief AI</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+          <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+        </svg>
+        <span>TubeBrief</span>
+      </div>
+      <button id="btn-settings" class="btn-ghost" title="Configure Gemini API Key">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
+    </header>
+
+    <!-- Not on YouTube Warning View -->
+    <div id="not-yt-view" class="not-yt-view" style="display:none;">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <p>Please open any YouTube video watch page to generate an AI summary or thread.</p>
+    </div>
+
+    <!-- API Key Settings View -->
+    <div id="settings-view" class="settings-view" style="display:none;">
+      <h3>Gemini API Key</h3>
+      <p class="settings-desc">Get a free key in 10 seconds at <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>.</p>
+      <input type="password" id="api-key-input" placeholder="AIzaSy..." />
+      <div class="settings-actions">
+        <button id="btn-save-key" class="btn btn-primary">Save Key</button>
+        <button id="btn-close-settings" class="btn btn-ghost">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <div id="main-workspace" class="main-workspace">
+      <!-- Video Info -->
+      <div class="video-info-bar">
+        <span id="video-title" class="video-title">Loading video...</span>
+      </div>
+
+      <!-- Mode Selector Tabs -->
+      <div class="mode-tabs">
+        <button class="mode-tab active" data-mode="summary">Summary</button>
+        <button class="mode-tab" data-mode="notes">Notes</button>
+        <button class="mode-tab" data-mode="twitter">X Thread</button>
+        <button class="mode-tab" data-mode="linkedin">LinkedIn</button>
+      </div>
+
+      <!-- Action Button -->
+      <div class="generate-bar">
+        <button id="btn-generate" class="btn btn-generate">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
+          </svg>
+          <span id="generate-btn-text">Generate AI Brief</span>
+        </button>
+      </div>
+
+      <!-- Output Container -->
+      <div class="output-container">
+        <div id="output-box" class="output-box" placeholder="Click 'Generate AI Brief' to analyze this video..."></div>
+      </div>
+
+      <!-- Actions Bar -->
+      <div class="output-actions">
+        <button id="btn-copy-output" class="btn btn-action" disabled>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          <span>Copy</span>
+        </button>
+        <button id="btn-dl-output" class="btn btn-action" disabled>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span>Save .md</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>TubeBrief AI · Free Gemini 1.5 Flash</span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
