@@ -15,33 +15,30 @@ async function getYouTubeVideoData() {
     return { title: 'No Video Found', transcript: '', url: window.location.href };
   }
 
-  // 1. Fetch exact player payload and captions for this specific video ID (prevents SPA stale DOM bugs)
-  const fetchedData = await fetchTranscriptAndDetails(videoId);
+  // 1. Resolve Title and Channel
+  let title = '';
+  let channel = '';
+  const domMeta = isShorts ? getActiveShortsMetadata() : getWatchMetadata();
+  if (domMeta.title && domMeta.title !== 'YouTube Short') title = domMeta.title;
+  if (domMeta.channel && domMeta.channel !== 'Creator') channel = domMeta.channel;
 
-  // 2. Resolve Title and Channel (prefer DOM active reel or fetched payload)
-  let title = fetchedData.title;
-  let channel = fetchedData.channel;
-
-  if (!title || isShorts) {
-    const domMeta = isShorts ? getActiveShortsMetadata() : getWatchMetadata();
-    if (domMeta.title && domMeta.title !== 'YouTube Short') title = domMeta.title;
-    if (domMeta.channel && domMeta.channel !== 'Creator') channel = domMeta.channel;
-  }
+  // 2. Fetch REAL Spoken Transcript (Captions) for this specific video
+  const fetchedData = await fetchRealTranscript(videoId);
 
   title = title || fetchedData.title || document.title.replace(' - YouTube', '');
   channel = channel || fetchedData.channel || 'YouTube Creator';
 
   let transcript = fetchedData.transcript;
 
-  // 3. Fallback: try active DOM transcript if direct caption fetch didn't return text
+  // 3. Fallback: try active DOM transcript panel if open
   if (!transcript || transcript.length < 30) {
     transcript = getTranscriptFromDOM();
   }
 
-  // 4. Fallback: use the video's actual description extracted from its player response
+  // 4. Fallback: only if video is 100% silent/no captions, use video description
   if (!transcript || transcript.length < 30) {
     const desc = fetchedData.description || getActiveDescription(isShorts);
-    transcript = `[Video Title: ${title}]\n[Channel: ${channel}]\n[Description & Details]:\n${desc.slice(0, 4000)}`;
+    transcript = `[Video Title: ${title}]\n[Channel: ${channel}]\n[Note: No spoken audio captions found. Video description below]:\n\n${desc.slice(0, 4000)}`;
   }
 
   return {
@@ -49,88 +46,139 @@ async function getYouTubeVideoData() {
     title,
     channel,
     url: window.location.href,
-    transcript: transcript.slice(0, 25000)
+    transcript: transcript.slice(0, 30000)
   };
 }
 
-async function fetchTranscriptAndDetails(videoId) {
-  const empty = { transcript: '', description: '', title: '', channel: '' };
-  if (!videoId) return empty;
+// Bulletproof Spoken Captions Extractor
+async function fetchRealTranscript(videoId) {
+  const result = { transcript: '', description: '', title: '', channel: '' };
+  if (!videoId) return result;
 
+  let captionTracks = [];
+
+  // A. Check live page scripts in the DOM first
   try {
-    const targetUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    const response = await fetch(targetUrl);
-    const html = await response.text();
-
-    let title = '';
-    let channel = '';
-    let description = '';
-    let transcript = '';
-
-    // Extract ytInitialPlayerResponse JSON payload for THIS video
-    const m = html.match(/ytInitialPlayerResponse\s*=\s*({.+?});(?:var|\s*<\/script>)/) ||
-              html.match(/ytInitialPlayerResponse\s*=\s*({.+?});/);
-
-    if (m) {
-      try {
-        const playerObj = JSON.parse(m[1]);
-        const details = playerObj.videoDetails || {};
-        title = details.title || '';
-        channel = details.author || '';
-        description = details.shortDescription || '';
-
-        const tracks = playerObj.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
-        if (tracks.length > 0) {
-          const enTrack = tracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US' || t.languageCode === 'en-GB') || tracks[0];
-          if (enTrack && enTrack.baseUrl) {
-            const capRes = await fetch(enTrack.baseUrl);
-            const capXml = await capRes.text();
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(capXml, 'text/xml');
-            const textNodes = xmlDoc.getElementsByTagName('text');
-
-            let textLines = [];
-            for (let i = 0; i < textNodes.length; i++) {
-              const raw = textNodes[i].textContent.trim();
-              if (raw) {
-                const decoded = raw.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
-                textLines.push(decoded);
-              }
-            }
-            transcript = textLines.join(' ');
-          }
+    for (const script of document.querySelectorAll('script')) {
+      const text = script.textContent || '';
+      if (text.includes('captionTracks')) {
+        const m = text.match(/"captionTracks":\s*(\[.*?\])/);
+        if (m) {
+          captionTracks = JSON.parse(m[1]);
+          if (captionTracks && captionTracks.length > 0) break;
         }
-      } catch (err) {
-        console.log("Error parsing player response:", err);
       }
     }
+  } catch (e) {
+    console.log("DOM caption search error:", e);
+  }
 
-    // Direct timedtext API fallback if transcript still empty
-    if (!transcript) {
-      try {
-        const ttRes = await fetch(`https://www.youtube.com/api/timedtext?lang=en&v=${videoId}`);
-        if (ttRes.ok) {
-          const ttXml = await ttRes.text();
-          if (ttXml && ttXml.includes('<text')) {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(ttXml, 'text/xml');
-            const textNodes = xmlDoc.getElementsByTagName('text');
-            let textLines = [];
-            for (let i = 0; i < textNodes.length; i++) {
-              const raw = textNodes[i].textContent.trim();
-              if (raw) textLines.push(raw);
-            }
-            transcript = textLines.join(' ');
+  // B. If not in DOM, fetch the video's watch page HTML and parse captionTracks directly
+  if (!captionTracks || captionTracks.length === 0) {
+    try {
+      const targetUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      const response = await fetch(targetUrl);
+      const html = await response.text();
+
+      // Extract title & author
+      const titleM = html.match(/"title":"(.*?)"/);
+      if (titleM) result.title = titleM[1];
+
+      const authorM = html.match(/"author":"(.*?)"/);
+      if (authorM) result.channel = authorM[1];
+
+      const descM = html.match(/"shortDescription":"(.*?)"/);
+      if (descM) {
+        try {
+          result.description = JSON.parse(`"${descM[1]}"`);
+        } catch {
+          result.description = descM[1];
+        }
+      }
+
+      // Extract caption tracks array directly (no regex nesting errors)
+      const trackMatch = html.match(/"captionTracks":\s*(\[.*?\])/);
+      if (trackMatch) {
+        captionTracks = JSON.parse(trackMatch[1]);
+      }
+    } catch (e) {
+      console.log("HTML caption fetch error:", e);
+    }
+  }
+
+  // C. Download and parse the caption track
+  if (captionTracks && captionTracks.length > 0) {
+    try {
+      // Find English or default track
+      const track = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US' || t.languageCode === 'en-GB') || captionTracks[0];
+      if (track && track.baseUrl) {
+        // Fetch XML or JSON captions
+        const capRes = await fetch(track.baseUrl);
+        const capText = await capRes.text();
+
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(capText, 'text/xml');
+        const textNodes = xmlDoc.getElementsByTagName('text');
+
+        let textLines = [];
+        for (let i = 0; i < textNodes.length; i++) {
+          const raw = textNodes[i].textContent.trim();
+          if (raw) {
+            const decoded = raw
+              .replace(/&amp;/g, '&')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>')
+              .replace(/&#39;/g, "'")
+              .replace(/&quot;/g, '"')
+              .replace(/\n/g, ' ');
+            textLines.push(decoded);
           }
         }
-      } catch (e) {}
-    }
 
-    return { transcript, description, title, channel };
-  } catch (err) {
-    console.error("fetchTranscriptAndDetails error:", err);
-    return empty;
+        if (textLines.length > 0) {
+          result.transcript = textLines.join(' ');
+          return result;
+        }
+      }
+    } catch (e) {
+      console.log("Error parsing caption XML:", e);
+    }
   }
+
+  // D. Fallback to direct timedtext endpoints with auto-generated speech recognition (ASR)
+  const candidateUrls = [
+    `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
+    `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
+    `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US`,
+    `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US&kind=asr`
+  ];
+
+  for (const url of candidateUrls) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        const text = await res.text();
+        if (text && text.includes('<text')) {
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(text, 'text/xml');
+          const textNodes = xmlDoc.getElementsByTagName('text');
+          let textLines = [];
+          for (let i = 0; i < textNodes.length; i++) {
+            const raw = textNodes[i].textContent.trim();
+            if (raw) {
+              textLines.push(raw.replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"'));
+            }
+          }
+          if (textLines.length > 0) {
+            result.transcript = textLines.join(' ');
+            return result;
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  return result;
 }
 
 function getActiveShortsMetadata() {
